@@ -22,20 +22,33 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.10.x'
           channel: 'stable'
+          cache: true
 
-      - name: Install dependencies
-        run: flutter pub get
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
+      - name: Detect Project Root and Install Dependencies
+        run: |
+          # Dhoondo pubspec.yaml kahan hai
+          PUBSPEC_PATH=$(find . -name pubspec.yaml -not -path "*/.*" | head -n 1)
+          if [ -z "$PUBSPEC_PATH" ]; then
+            echo "Error: pubspec.yaml nahi mila!"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          cd "$PROJECT_DIR"
+          flutter pub get
 
       - name: Build APK
-        run: flutter build apk --release
+        run: |
+          cd ${{ env.PROJECT_DIR }}
+          # Gradlew check aur permissions
+          if [ -f "android/gradlew" ]; then
+            chmod +x android/gradlew
+          fi
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: "**/build/app/outputs/flutter-apk/app-release.apk"
