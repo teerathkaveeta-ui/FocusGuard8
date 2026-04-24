@@ -15,11 +15,25 @@ public class FocusVpnService extends VpnService {
     private ParcelFileDescriptor vpnInterface = null;
     private final Handler handler = new Handler();
     private int userLimitMinutes = 30;
+    private List<String> targetPackages = Arrays.asList(
+        "com.facebook.katana", 
+        "com.instagram.android", 
+        "com.google.android.youtube"
+    );
+    private String mode = "alert";
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && intent.hasExtra("limit")) {
-            userLimitMinutes = intent.getIntExtra("limit", 30);
+        if (intent != null) {
+            if (intent.hasExtra("limit")) {
+                userLimitMinutes = intent.getIntExtra("limit", 30);
+            }
+            if (intent.hasExtra("packages")) {
+                targetPackages = intent.getStringArrayListExtra("packages");
+            }
+            if (intent.hasExtra("mode")) {
+                mode = intent.getStringExtra("mode");
+            }
         }
         checkUsageLoop();
         return START_STICKY;
@@ -27,7 +41,7 @@ public class FocusVpnService extends VpnService {
 
     private void checkUsageLoop() {
         handler.postDelayed(() -> {
-            if (getTotalSocialUsage() > (userLimitMinutes * 60 * 1000L)) {
+            if (mode.equals("strict") && getTotalSocialUsage() > (userLimitMinutes * 60 * 1000L)) {
                 if (vpnInterface == null) {
                     startBlocking();
                 }
@@ -44,13 +58,7 @@ public class FocusVpnService extends VpnService {
         long now = System.currentTimeMillis();
         Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(now - 86400000, now);
         
-        List<String> targets = Arrays.asList(
-            "com.facebook.katana", 
-            "com.instagram.android", 
-            "com.google.android.youtube"
-        );
-        
-        for (String pkg : targets) {
+        for (String pkg : targetPackages) {
             if (stats.containsKey(pkg)) {
                 total += stats.get(pkg).getTotalTimeInForeground();
             }
@@ -65,9 +73,11 @@ public class FocusVpnService extends VpnService {
                    .addAddress("10.0.0.2", 24)
                    .addDnsServer("8.8.8.8");
             
-            builder.addAllowedApplication("com.facebook.katana");
-            builder.addAllowedApplication("com.instagram.android");
-            builder.addAllowedApplication("com.google.android.youtube");
+            for (String pkg : targetPackages) {
+                try {
+                    builder.addAllowedApplication(pkg);
+                } catch (Exception e) {/* package might not be installed */}
+            }
             
             vpnInterface = builder.establish();
         } catch (Exception e) {

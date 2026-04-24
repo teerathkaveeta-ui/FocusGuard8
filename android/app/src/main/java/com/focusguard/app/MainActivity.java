@@ -19,7 +19,12 @@ public class MainActivity extends FlutterActivity {
             .setMethodCallHandler((call, result) -> {
                 if (call.method.equals("startVpnWithLimit")) {
                     Object limitArg = call.argument("limit");
+                    Object packagesArg = call.argument("packages");
+                    Object modeArg = call.argument("mode");
+                    
                     int limit = limitArg instanceof Integer ? (int) limitArg : 30;
+                    java.util.List<String> packages = (java.util.List<String>) packagesArg;
+                    String mode = modeArg instanceof String ? (String) modeArg : "alert";
                     
                     if (!hasUsageStatsPermission()) {
                         startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
@@ -29,7 +34,7 @@ public class MainActivity extends FlutterActivity {
                     if (vpnIntent != null) {
                         startActivityForResult(vpnIntent, 0);
                     } else {
-                        startVpnService(limit);
+                        startVpnService(limit, packages, mode);
                     }
                     result.success(null);
                 } else {
@@ -44,9 +49,13 @@ public class MainActivity extends FlutterActivity {
         return mode == AppOpsManager.MODE_ALLOWED;
     }
 
-    private void startVpnService(int limit) {
+    private void startVpnService(int limit, java.util.List<String> packages, String mode) {
         Intent intent = new Intent(this, FocusVpnService.class);
         intent.putExtra("limit", limit);
+        if (packages != null) {
+            intent.putStringArrayListExtra("packages", new java.util.ArrayList<>(packages));
+        }
+        intent.putExtra("mode", mode);
         startService(intent);
     }
 
