@@ -5,12 +5,17 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.VpnService;
 import android.provider.Settings;
+import java.util.ArrayList;
+import java.util.List;
 import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.MethodChannel;
 
 public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "com.focusguard/vpn";
+    private int lastLimit = 30;
+    private List<String> lastPackages = null;
+    private String lastMode = "alert";
 
     @Override
     public void configureFlutterEngine(FlutterEngine flutterEngine) {
@@ -22,9 +27,9 @@ public class MainActivity extends FlutterActivity {
                     Object packagesArg = call.argument("packages");
                     Object modeArg = call.argument("mode");
                     
-                    int limit = limitArg instanceof Integer ? (int) limitArg : 30;
-                    java.util.List<String> packages = (java.util.List<String>) packagesArg;
-                    String mode = modeArg instanceof String ? (String) modeArg : "alert";
+                    lastLimit = limitArg instanceof Integer ? (int) limitArg : 30;
+                    lastPackages = (List<String>) packagesArg;
+                    lastMode = modeArg instanceof String ? (String) modeArg : "alert";
                     
                     if (!hasUsageStatsPermission()) {
                         startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
@@ -34,7 +39,7 @@ public class MainActivity extends FlutterActivity {
                     if (vpnIntent != null) {
                         startActivityForResult(vpnIntent, 0);
                     } else {
-                        startVpnService(limit, packages, mode);
+                        startVpnService(lastLimit, lastPackages, lastMode);
                     }
                     result.success(null);
                 } else {
@@ -49,11 +54,11 @@ public class MainActivity extends FlutterActivity {
         return mode == AppOpsManager.MODE_ALLOWED;
     }
 
-    private void startVpnService(int limit, java.util.List<String> packages, String mode) {
+    private void startVpnService(int limit, List<String> packages, String mode) {
         Intent intent = new Intent(this, FocusVpnService.class);
         intent.putExtra("limit", limit);
         if (packages != null) {
-            intent.putStringArrayListExtra("packages", new java.util.ArrayList<>(packages));
+            intent.putStringArrayListExtra("packages", new ArrayList<>(packages));
         }
         intent.putExtra("mode", mode);
         startService(intent);
@@ -62,7 +67,7 @@ public class MainActivity extends FlutterActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (resultCode == RESULT_OK) {
-            startVpnService(30);
+            startVpnService(lastLimit, lastPackages, lastMode);
         }
         super.onActivityResult(requestCode, resultCode, data);
     }
