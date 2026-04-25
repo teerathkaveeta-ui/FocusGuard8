@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() => runApp(const FocusGuardApp());
 
@@ -231,11 +232,12 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadPin();
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         if (_isActive && _savedPin != null) {
-          // Temporarily revert the index change until authorized
           final targetIndex = _tabController.index;
+          // Revert for UI consistency while dialog is showing
           _tabController.index = _mode == 'alert' ? 0 : 1;
           
           _showPinDialog(
@@ -248,7 +250,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                   if (_mode == 'alert') _strictUntil = null;
                 });
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect PIN!")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect Security PIN!")));
               }
             },
           );
@@ -262,6 +264,19 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     });
   }
 
+  Future<void> _loadPin() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _savedPin = prefs.getString('security_pin');
+    });
+  }
+
+  Future<void> _savePin(String pin) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('security_pin', pin);
+    setState(() => _savedPin = pin);
+  }
+
   Future<void> _showPinDialog({required bool isSetting, Function(String)? onAuth}) async {
     final controller = TextEditingController();
     await showDialog(
@@ -269,30 +284,46 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(isSetting ? "Set Security PIN" : "Enter PIN to Unlock"),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          maxLength: 4,
-          decoration: const InputDecoration(hintText: "4 Digit PIN"),
+        title: Text(isSetting ? "Set Parental Control PIN" : "PIN Verification Required"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("This PIN secures your shield settings.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              obscureText: true,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              maxLength: 4,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 8),
+              decoration: const InputDecoration(
+                hintText: "****",
+                counterText: "",
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (controller.text.length == 4) {
                 if (isSetting) {
-                  setState(() => _savedPin = controller.text);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PIN Saved Successfully")));
+                  await _savePin(controller.text);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PIN Successfully Recorded")));
                 } else if (onAuth != null) {
                   onAuth(controller.text);
                 }
                 Navigator.pop(context);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enter 4 digits")));
               }
             },
-            child: const Text("Confirm"),
+            child: const Text("Verify"),
           ),
         ],
       ),
@@ -423,86 +454,79 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFFF1F5F9)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 20, offset: const Offset(0, 10))
+                ],
               ),
               child: Column(
                 children: [
-                  TabBar(
-                    controller: _tabController,
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    dividerColor: Colors.transparent,
-                    indicator: UnderlineTabIndicator(
-                      borderSide: BorderSide(
-                        width: 3.0,
-                        color: _mode == 'alert' ? Colors.orange : Colors.red,
-                      ),
-                      insets: const EdgeInsets.symmetric(horizontal: 20),
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    margin: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(16),
                     ),
-                    labelColor: _mode == 'alert' ? Colors.orange[800] : Colors.red[800],
-                    unselectedLabelColor: Colors.grey,
-                    tabs: const [
-                      Tab(text: "Alert Mode", icon: Icon(Icons.notifications_active_outlined)),
-                      Tab(text: "Strict Mode", icon: Icon(Icons.gpp_maybe_outlined)),
-                    ],
-                  ),
-                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        const Text("CUSTOM TIME LIMIT", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _timeSelector("HR", _hours, (v) => setState(() => _hours = v), 23),
-                            const Text(" : ", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-                            _timeSelector("MIN", _minutes, (v) => setState(() => _minutes = v), 59),
-                          ],
-                        ),
-                        if (_mode == 'strict') ...[
-                          const SizedBox(height: 24),
-                          const Text("LOCK UNTIL (FIXED DATE)", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                          const SizedBox(height: 12),
-                          InkWell(
-                            onTap: _pickDateTime,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _tabController.animateTo(0),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFF8FAFC),
+                                color: _mode == 'alert' ? Colors.white : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                                boxShadow: _mode == 'alert' 
+                                    ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
+                                    : [],
                               ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.calendar_today, size: 16, color: Colors.blue),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _strictUntil == null 
-                                          ? "Select Expiry Date & Time" 
-                                          : "Lock until: ${_strictUntil!.day}/${_strictUntil!.month} ${_strictUntil!.hour}:${_strictUntil!.minute}",
-                                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                                    ),
-                                  ),
-                                  if (_strictUntil != null) IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => setState(() => _strictUntil = null)),
-                                ],
-                              ),
+                              alignment: Alignment.center,
+                              child: Text("Alert Mode", 
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold, 
+                                  color: _mode == 'alert' ? Colors.orange[800] : Colors.grey
+                                )),
                             ),
                           ),
-                        ],
-                        const SizedBox(height: 32),
-                        const Text("SHIELD APPLICATIONS", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                        const SizedBox(height: 12),
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.5),
-                          itemCount: apps.length,
-                          itemBuilder: (context, index) => _appTile(apps[index]),
                         ),
-                        const SizedBox(height: 32),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => _tabController.animateTo(1),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _mode == 'strict' ? Colors.white : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: _mode == 'strict' 
+                                    ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
+                                    : [],
+                              ),
+                              alignment: Alignment.center,
+                              child: Text("Strict Mode", 
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold, 
+                                  color: _mode == 'strict' ? Colors.red[800] : Colors.grey
+                                )),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: _mode == 'alert' 
+                        ? KeyedSubtree(key: const ValueKey('alert'), child: _buildConfigPage("Alerting", "Warns you with sound and vibrations. No blocking.", false))
+                        : KeyedSubtree(key: const ValueKey('strict'), child: _buildConfigPage("Lockdown", "Blocks data for selected apps. Includes grace period.", true)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Column(
+                      children: [
                         SizedBox(
                           width: double.infinity,
                           height: 64,
@@ -512,13 +536,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                               backgroundColor: _mode == 'alert' ? const Color(0xFF2563EB) : Colors.black,
                               foregroundColor: Colors.white,
                               disabledBackgroundColor: Colors.green[100],
-                              disabledForegroundColor: Colors.green[700],
+                              disabledForegroundColor: Colors.green[800],
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                               elevation: 0,
                             ),
                             child: _isActive
-                                ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle_rounded), SizedBox(width: 8), Text("Shield Active", style: TextStyle(fontWeight: FontWeight.bold))])
-                                : Text(_mode == 'alert' ? "ENABLE ALERTS" : "ACTIVATE STRICT LOCK", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle_rounded), SizedBox(width: 8), Text("Shield Protecting", style: TextStyle(fontWeight: FontWeight.bold))])
+                                : Text(_mode == 'alert' ? "START ALERT SHIELD" : "START STRICT SHIELD", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           ),
                         ),
                         if (_isActive) ...[
@@ -528,7 +552,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                             child: TextButton.icon(
                               onPressed: _stopMonitoring,
                               icon: const Icon(Icons.stop_circle_outlined, color: Colors.red),
-                              label: const Text("STOP SHIELD", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                              label: const Text("TERMINATE SHIELD", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.red)),
@@ -543,30 +567,53 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               ),
             ),
             const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  onPressed: () => _showPinDialog(isSetting: true),
-                  icon: const Icon(Icons.lock_outline, color: Colors.blueGrey, size: 20),
-                  tooltip: "Set Parental PIN",
-                ),
-                Text(
-                  _savedPin != null ? "PIN Lock Enabled" : "No PIN Protection",
-                  style: const TextStyle(color: Colors.blueGrey, fontSize: 11),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _mode == 'alert' 
-                ? "Alert Mode: Plays voice notification & vibrates when limit ends."
-                : "Strict Mode: Blocks network for selected apps after limit/date.",
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            )
+            _buildSecuritySection(),
+            const SizedBox(height: 32),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSecuritySection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.security_outlined, color: Colors.blue, size: 20),
+              const SizedBox(width: 8),
+              const Text("Trust & Security", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              const Spacer(),
+              _savedPin != null 
+                  ? const Icon(Icons.lock, color: Colors.green, size: 16)
+                  : const Icon(Icons.lock_open, color: Colors.orange, size: 16),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "FocusGuard manages your app sessions locally using Android's VpnService. No user data leaves your device. Antivirus flags may occur because of network control features—this is expected and safe.",
+            style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          InkWell(
+            onTap: () => _showPinDialog(isSetting: true),
+            child: Row(
+              children: [
+                Text(_savedPin != null ? "Security PIN set" : "PIN protection off", 
+                     style: TextStyle(color: _savedPin != null ? Colors.green : Colors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
+                const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -579,28 +626,24 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.blue[100]!),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(Icons.shield_rounded, color: Colors.blue[700], size: 24),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Focus Shield Active", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900])),
-                    const Text("Play Protect may flag this app as it manages network. It is safe and local-only.", style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
-                  ],
-                ),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            child: Icon(_isActive ? Icons.verified_user : Icons.shield_outlined, color: Colors.blue, size: 28),
           ),
-          const Divider(height: 24, color: Colors.blue),
-          const Text(
-            "Note: The VPN icon removal depends on system. Shield blocks only foreground social apps.",
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 10, color: Colors.blueGrey, fontStyle: FontStyle.italic),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_isActive ? "Shield is Standing Guard" : "Shield is in Standby", 
+                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900], fontSize: 15)),
+                Text(_isActive ? "Monitoring selected apps for usage." : "Configure your limit and tap Start.", 
+                     style: TextStyle(fontSize: 11, color: Colors.blue[700])),
+              ],
+            ),
           ),
         ],
       ),

@@ -119,9 +119,16 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
                     if (isTimeOver || isLockedDate) {
                         // Grace period check for the first time session limit is hit
                         if (isTimeOver && !hasWarnedStrict && !isLockedDate) {
-                            triggerAlert("Strict Mode: Limit reached! Preparing to block in 10 seconds.");
+                            triggerAlert("FocusGuard Warning! Limits reached. Blocking in 10 seconds. Save your work.");
                             hasWarnedStrict = true;
                             warningStartTime = now;
+                            
+                            // Second warning after 5 seconds
+                            handler.postDelayed(() -> {
+                                if ("strict".equals(mode) && vpnInterface == null) {
+                                    triggerAlert("Shield activating in 5 seconds!");
+                                }
+                            }, 5000);
                         }
 
                         // Block if grace period is over or if it's a hard date lock
