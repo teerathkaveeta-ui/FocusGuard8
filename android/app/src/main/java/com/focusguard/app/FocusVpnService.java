@@ -97,7 +97,7 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
 
     private void triggerAlert() {
         handler.post(() -> {
-            Toast.makeText(this, "Your limit is over! Please close the app and press OK.", Toast.LENGTH_LONG).show();
+            Toast.makeText(FocusVpnService.this, "Your limit is over! Please close the app and press OK.", Toast.LENGTH_LONG).show();
             
             Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -128,7 +128,7 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     }
 
     private void startBlocking() {
-        Builder builder = new Builder();
+        VpnService.Builder builder = new VpnService.Builder();
         try {
             builder.setSession("FocusGuard")
                    .addAddress("10.0.0.2", 24)
