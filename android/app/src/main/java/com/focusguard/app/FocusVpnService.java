@@ -99,8 +99,11 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= 34) { // Build.VERSION_CODES.UPSIDE_DOWN_CAKE
             startForeground(1, createNotification("Monitoring usage for selected apps..."), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // For API 29-33, use standard or no specific type if not VPN-only
+            startForeground(1, createNotification("Monitoring usage for selected apps..."));
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForeground(1, createNotification("Monitoring usage for selected apps..."));
         }

@@ -461,55 +461,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(4),
-                    margin: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _attemptModeSwitch('alert'),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 250),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.shield_rounded, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 12),
+                            const Text("🛡️ SHIELD MODE", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                color: _mode == 'alert' ? Colors.white : Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: _mode == 'alert' 
-                                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
-                                    : [],
+                                color: _mode == 'alert' ? Colors.orange[50] : Colors.red[50],
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                              alignment: Alignment.center,
-                              child: Text("Alert Mode", 
+                              child: Text(
+                                _mode.toUpperCase(),
                                 style: TextStyle(
-                                  fontWeight: FontWeight.bold, 
-                                  color: _mode == 'alert' ? Colors.orange[800] : Colors.grey[500]
-                                )),
+                                  color: _mode == 'alert' ? Colors.orange[800] : Colors.red[800],
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _attemptModeSwitch('strict'),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 250),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: _mode == 'strict' ? Colors.white : Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: _mode == 'strict' 
-                                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
-                                    : [],
-                              ),
-                              alignment: Alignment.center,
-                              child: Text("Strict Mode", 
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold, 
-                                  color: _mode == 'strict' ? Colors.red[800] : Colors.grey[500]
-                                )),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _attemptModeSwitch(_mode == 'alert' ? 'strict' : 'alert'),
+                            icon: Icon(_mode == 'alert' ? Icons.lock_outline : Icons.notifications_active_outlined),
+                            label: Text("SWITCH TO ${_mode == 'alert' ? 'STRICT' : 'ALERT'} MODE"),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              side: BorderSide(color: Colors.grey[300]!),
                             ),
                           ),
                         ),
@@ -517,9 +505,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  _mode == 'alert' 
-                      ? _buildConfigPage("Focus Alerts Enabled", "Warns you with sound and vibrations. No app blocking occurs in this mode.", false)
-                      : _buildConfigPage("Strict Shield Enabled", "Active network blocking for selected apps after limit ends. Prevents distraction.", true),
+                  _buildConfigPage(
+                    _mode == 'alert' ? "Focus Alerts Active" : "Strict Shield Active",
+                    _mode == 'alert' 
+                      ? "Device will vibrate and play sound when target apps are opened. No blocking."
+                      : "Target apps will be blocked from internet access once time limit is reached.",
+                    _mode == 'strict'
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     child: Column(
