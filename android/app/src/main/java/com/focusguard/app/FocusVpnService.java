@@ -31,7 +31,9 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     private String mode = "alert";
     private TextToSpeech tts;
     private boolean ttsReady = false;
-    private boolean hasAlerted = false;
+    private boolean hasAlertedAlert = false;
+    private boolean hasAlertedStrict = false;
+    private String currentForegroundPackage = "";
 
     @Override
     public void onCreate() {
@@ -55,7 +57,8 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
                 strictUntilMillis = intent.getLongExtra("strictUntil", 0);
             }
         }
-        hasAlerted = false;
+        hasAlertedAlert = false;
+        hasAlertedStrict = false;
         checkUsageLoop();
         return START_STICKY;
     }
@@ -71,43 +74,80 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     private void checkUsageLoop() {
         handler.postDelayed(() -> {
             long now = System.currentTimeMillis();
-            boolean isTimeOver = getTotalSocialUsage() > (userLimitMinutes * 60 * 1000L);
-            boolean isStrictExpired = strictUntilMillis > 0 && now > strictUntilMillis;
+            updateForegroundPackage();
             
-            // If strict is set, and not expired, we are in strict block
-            boolean shouldBlock = (mode.equals("strict") && isTimeOver) || (strictUntilMillis > 0 && now < strictUntilMillis);
+            boolean isTargetActive = targetPackages.contains(currentForegroundPackage);
+            boolean isTimeOver = getTotalSocialUsage() > (userLimitMinutes * 60 * 1000L);
+            boolean isLockedDate = strictUntilMillis > 0 && now < strictUntilMillis;
 
-            if (shouldBlock) {
-                if (vpnInterface == null) {
-                    startBlocking();
+            // Logic 1: Strict Mode (Block and Alert)
+            if (mode.equals("strict")) {
+                if (isTimeOver || isLockedDate) {
+                    // Only establish tunnel if the target app is actually in foreground
+                    // This "stops" the VPN effect when they leave the social app
+                    if (isTargetActive) {
+                        if (vpnInterface == null) {
+                            startBlocking();
+                        }
+                    } else {
+                        stopBlocking();
+                    }
+                    
+                    if (!hasAlertedStrict) {
+                        triggerAlert("Strict Mode: Focus Limit Exceeded. App restricted.");
+                        hasAlertedStrict = true;
+                    }
+                } else {
+                    stopBlocking();
+                    hasAlertedStrict = false;
                 }
-            } else {
-                stopBlocking();
+            }
+            
+            // Logic 2: Alert Mode (Notify only)
+            if (mode.equals("alert")) {
+                stopBlocking(); // Never block in Alert mode
+                if (isTimeOver && !hasAlertedAlert) {
+                    triggerAlert("Alert Mode: Limit Reached. Kindly close the app.");
+                    hasAlertedAlert = true;
+                } else if (!isTimeOver) {
+                    hasAlertedAlert = false;
+                }
             }
 
-            if (isTimeOver && mode.equals("alert") && !hasAlerted) {
-                triggerAlert();
-                hasAlerted = true;
-            }
-
-            // Tight loop for quick blocking (3 seconds)
             checkUsageLoop();
-        }, 3000); 
+        }, 2000); // Check every 2s for better foreground detection
     }
 
-    private void triggerAlert() {
+    private void updateForegroundPackage() {
+        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        long now = System.currentTimeMillis();
+        List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 1000 * 60, now);
+        if (stats != null) {
+            long lastTime = 0;
+            for (UsageStats s : stats) {
+                if (s.getLastTimeUsed() > lastTime) {
+                    currentForegroundPackage = s.getPackageName();
+                    lastTime = s.getLastTimeUsed();
+                }
+            }
+        }
+    }
+
+    private void triggerAlert(String message) {
         handler.post(() -> {
-            Toast.makeText(FocusVpnService.this, "Your limit is over! Please close the app and press OK.", Toast.LENGTH_LONG).show();
+            Toast.makeText(FocusVpnService.this, message, Toast.LENGTH_LONG).show();
             
             Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                v.vibrate(VibrationEffect.createOneShot(1000, VibrationEffect.DEFAULT_AMPLITUDE));
-            } else {
-                v.vibrate(1000);
+            if (v != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    v.vibrate(VibrationEffect.createWaveform(new long[]{0, 500, 200, 500}, -1));
+                } else {
+                    v.vibrate(1000);
+                }
             }
 
             if (ttsReady) {
-                tts.speak("Your limit has been reached. FocusGuard requests you to kindly close the app now.", TextToSpeech.QUEUE_FLUSH, null, null);
+                tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, null);
             }
         });
     }

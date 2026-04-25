@@ -231,9 +231,13 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-      setState(() {
-        _mode = _tabController.index == 0 ? 'alert' : 'strict';
-      });
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          _mode = _tabController.index == 0 ? 'alert' : 'strict';
+          // Optional: Clear strictUntil if moving to alert
+          // if (_mode == 'alert') _strictUntil = null;
+        });
+      }
     });
   }
 
@@ -313,6 +317,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            _buildShieldHealth(),
+            const SizedBox(height: 16),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -435,6 +441,41 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 
+  Widget _buildShieldHealth() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.blue[100]!),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Icon(Icons.shield_rounded, color: Colors.blue[700], size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Focus Shield Active", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900])),
+                    const Text("Play Protect may flag this app as it manages network. It is safe and local-only.", style: TextStyle(fontSize: 11, color: Colors.blueGrey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 24, color: Colors.blue),
+          const Text(
+            "Note: The VPN icon removal depends on system. Shield blocks only foreground social apps.",
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: Colors.blueGrey, fontStyle: FontStyle.italic),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _timeSelector(String label, int value, Function(int) onChanged, int max) {
     return Column(
       children: [
