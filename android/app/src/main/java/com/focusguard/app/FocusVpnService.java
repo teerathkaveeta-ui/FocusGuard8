@@ -34,6 +34,8 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     private boolean hasAlertedAlert = false;
     private boolean hasAlertedStrict = false;
     private String currentForegroundPackage = "";
+    private Map<String, Long> sessionBaseUsage = new java.util.HashMap<>();
+    private long startTime = 0;
 
     @Override
     public void onCreate() {
@@ -57,8 +59,12 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
                 strictUntilMillis = intent.getLongExtra("strictUntil", 0);
             }
         }
+        
         hasAlertedAlert = false;
         hasAlertedStrict = false;
+        startTime = System.currentTimeMillis();
+        captureBaseUsage(); 
+        
         checkUsageLoop();
         return START_STICKY;
     }
@@ -71,13 +77,44 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
         }
     }
 
+    private void captureBaseUsage() {
+        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        long now = System.currentTimeMillis();
+        Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(now - (now % 86400000), now);
+        sessionBaseUsage.clear();
+        for (String pkg : targetPackages) {
+            if (stats.containsKey(pkg)) {
+                sessionBaseUsage.put(pkg, stats.get(pkg).getTotalTimeInForeground());
+            } else {
+                sessionBaseUsage.put(pkg, 0L);
+            }
+        }
+    }
+
+    private long getSessionUsage() {
+        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        long now = System.currentTimeMillis();
+        Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(now - (now % 86400000), now);
+        
+        long currentTotal = 0;
+        for (String pkg : targetPackages) {
+            if (stats.containsKey(pkg)) {
+                long totalTime = stats.get(pkg).getTotalTimeInForeground();
+                long base = sessionBaseUsage.containsKey(pkg) ? sessionBaseUsage.get(pkg) : 0;
+                currentTotal += Math.max(0, totalTime - base);
+            }
+        }
+        return currentTotal;
+    }
+
     private void checkUsageLoop() {
         handler.postDelayed(() -> {
             long now = System.currentTimeMillis();
             updateForegroundPackage();
             
             boolean isTargetActive = targetPackages.contains(currentForegroundPackage);
-            boolean isTimeOver = getTotalSocialUsage() > (userLimitMinutes * 60 * 1000L);
+            long sessionTimeUsed = getSessionUsage();
+            boolean isTimeOver = sessionTimeUsed > (userLimitMinutes * 60 * 1000L);
             boolean isLockedDate = strictUntilMillis > 0 && now < strictUntilMillis;
 
             // Logic 1: Strict Mode (Block and Alert)
@@ -150,21 +187,6 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
                 tts.speak(message, TextToSpeech.QUEUE_FLUSH, null, null);
             }
         });
-    }
-
-    private long getTotalSocialUsage() {
-        long total = 0;
-        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
-        long now = System.currentTimeMillis();
-        // Today's usage
-        Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(now - (now % 86400000), now);
-        
-        for (String pkg : targetPackages) {
-            if (stats.containsKey(pkg)) {
-                total += stats.get(pkg).getTotalTimeInForeground();
-            }
-        }
-        return total;
     }
 
     private void startBlocking() {

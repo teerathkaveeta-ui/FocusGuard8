@@ -45,6 +45,14 @@ public class MainActivity extends FlutterActivity {
                         startVpnService(lastLimit, lastPackages, lastMode, lastStrictUntil);
                     }
                     result.success(null);
+                } else if (call.method.equals("contactDeveloper")) {
+                    Intent intent = new Intent(Intent.ACTION_SENDTO);
+                    intent.setData(android.net.Uri.parse("mailto:teerathkaveeta@gmail.com"));
+                    intent.putExtra(Intent.EXTRA_SUBJECT, "FocusGuard Feedback");
+                    try {
+                        startActivity(Intent.createChooser(intent, "Send Email"));
+                    } catch (Exception e) {}
+                    result.success(null);
                 } else if (call.method.equals("stopVpn")) {
                     Intent intent = new Intent(this, FocusVpnService.class);
                     stopService(intent);

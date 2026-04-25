@@ -233,11 +233,25 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
-        setState(() {
-          _mode = _tabController.index == 0 ? 'alert' : 'strict';
-          // Optional: Clear strictUntil if moving to alert
-          // if (_mode == 'alert') _strictUntil = null;
-        });
+        if (_isActive && _savedPin != null) {
+          _showPinDialog(
+            isSetting: false,
+            onAuth: (pin) {
+              if (pin == _savedPin) {
+                setState(() {
+                  _mode = _tabController.index == 0 ? 'alert' : 'strict';
+                });
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect PIN!")));
+                _tabController.index = _mode == 'alert' ? 0 : 1;
+              }
+            },
+          );
+        } else {
+          setState(() {
+            _mode = _tabController.index == 0 ? 'alert' : 'strict';
+          });
+        }
       }
     });
   }
@@ -374,6 +388,21 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             const Text("FocusGuard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (val) {
+              if (val == 'contact') {
+                platform.invokeMethod('contactDeveloper');
+              } else if (val == 'pin') {
+                _showPinDialog(isSetting: true);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'contact', child: Text("Contact Me")),
+              PopupMenuItem(value: 'pin', child: Text(_savedPin == null ? "Set Parental PIN" : "Modify PIN")),
+            ],
+          ),
+        ],
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
