@@ -2,6 +2,10 @@ package com.focusguard.app;
 
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.net.VpnService;
@@ -41,10 +45,47 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     private boolean hasWarnedStrict = false;
     private long warningStartTime = 0;
 
+    private static final String CHANNEL_ID = "focus_guard_channel";
+
     @Override
     public void onCreate() {
         super.onCreate();
         tts = new TextToSpeech(this, this);
+        createNotificationChannel();
+    }
+
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel serviceChannel = new NotificationChannel(
+                CHANNEL_ID,
+                "Shield Presence",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) {
+                manager.createNotificationChannel(serviceChannel);
+            }
+        }
+    }
+
+    private Notification createNotification(String text) {
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+            this, 0, new Intent(this, MainActivity.class), 
+            PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            builder = new Notification.Builder(this, CHANNEL_ID);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+
+        return builder.setContentTitle("🛡️ Shield is Active")
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentIntent(pendingIntent)
+            .build();
     }
 
     @Override
@@ -57,6 +98,9 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForeground(1, createNotification("Monitoring usage for selected apps..."));
+        }
         if (intent != null) {
             if (intent.hasExtra("limit")) {
                 userLimitMinutes = intent.getIntExtra("limit", 30);

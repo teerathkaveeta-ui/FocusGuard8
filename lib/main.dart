@@ -311,16 +311,17 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
             onPressed: () async {
-              if (controller.text.length == 4) {
+              final enteringPin = controller.text;
+              if (enteringPin.length == 4) {
+                Navigator.pop(context); // Close FIRST
                 if (isSetting) {
-                  await _savePin(controller.text);
+                  await _savePin(enteringPin);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PIN Successfully Recorded")));
                 } else if (onAuth != null) {
-                  onAuth(controller.text);
+                  onAuth(enteringPin);
                 }
-                Navigator.pop(context);
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enter 4 digits")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Enter exactly 4 digits")));
               }
             },
             child: const Text("Verify"),
@@ -588,28 +589,44 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         children: [
           Row(
             children: [
-              const Icon(Icons.security_outlined, color: Colors.blue, size: 20),
+              const Icon(Icons.verified_user_outlined, color: Colors.blue, size: 20),
               const SizedBox(width: 8),
-              const Text("Trust & Security", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              const Text("Privacy & Security Info", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               const Spacer(),
-              _savedPin != null 
-                  ? const Icon(Icons.lock, color: Colors.green, size: 16)
-                  : const Icon(Icons.lock_open, color: Colors.orange, size: 16),
+              if (_savedPin != null) const Icon(Icons.lock, color: Colors.green, size: 16),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            "FocusGuard manages your app sessions locally using Android's VpnService. No user data leaves your device. Antivirus flags may occur because of network control features—this is expected and safe.",
-            style: TextStyle(fontSize: 11, color: Colors.grey[600], height: 1.5),
+            "FocusGuard uses a local VPN to monitor targeted social media app data locally on your device. \n\n"
+            "🛡️ NO data is uploaded or shared.\n"
+            "🛡️ Antivirus warnings/viruses flags are FALSE POSITIVES caused by the network management features required to block apps.\n"
+            "🛡️ You can verify this by checking that your internet works normally for other apps.",
+            style: TextStyle(fontSize: 11, color: Colors.grey[700], height: 1.6),
           ),
           const SizedBox(height: 16),
           InkWell(
             onTap: () => _showPinDialog(isSetting: true),
             child: Row(
               children: [
-                Text(_savedPin != null ? "Security PIN set" : "PIN protection off", 
-                     style: TextStyle(color: _savedPin != null ? Colors.green : Colors.orange, fontSize: 12, fontWeight: FontWeight.bold)),
-                const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _savedPin != null ? Colors.green[50] : Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _savedPin != null ? "Security Lock: ENABLED" : "Security Lock: UNSET", 
+                    style: TextStyle(
+                      color: _savedPin != null ? Colors.green[700] : Colors.orange[700], 
+                      fontSize: 11, 
+                      fontWeight: FontWeight.bold
+                    )
+                  ),
+                ),
+                const Spacer(),
+                const Text("Modify Settings", style: TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.w500)),
+                const Icon(Icons.chevron_right, size: 16, color: Colors.blue),
               ],
             ),
           ),
