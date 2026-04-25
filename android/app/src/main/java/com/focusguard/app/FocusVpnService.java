@@ -34,13 +34,24 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     private boolean hasAlertedAlert = false;
     private boolean hasAlertedStrict = false;
     private String currentForegroundPackage = "";
-    private Map<String, Long> sessionBaseUsage = new java.util.HashMap<>();
+    private long sessionElapsedMillis = 0;
+    private long lastForegroundCheckTime = 0;
     private long startTime = 0;
+    private boolean hasWarnedStrict = false;
+    private long warningStartTime = 0;
 
     @Override
     public void onCreate() {
         super.onCreate();
         tts = new TextToSpeech(this, this);
+    }
+
+    @Override
+    public void onInit(int status) {
+        if (status == TextToSpeech.SUCCESS) {
+            tts.setLanguage(Locale.US);
+            ttsReady = true;
+        }
     }
 
     @Override
@@ -62,49 +73,14 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
         
         hasAlertedAlert = false;
         hasAlertedStrict = false;
+        hasWarnedStrict = false;
+        warningStartTime = 0;
         startTime = System.currentTimeMillis();
-        captureBaseUsage(); 
+        sessionElapsedMillis = 0;
+        lastForegroundCheckTime = System.currentTimeMillis();
         
         checkUsageLoop();
         return START_STICKY;
-    }
-
-    @Override
-    public void onInit(int status) {
-        if (status == TextToSpeech.SUCCESS) {
-            tts.setLanguage(Locale.US);
-            ttsReady = true;
-        }
-    }
-
-    private void captureBaseUsage() {
-        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
-        long now = System.currentTimeMillis();
-        Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(now - (now % 86400000), now);
-        sessionBaseUsage.clear();
-        for (String pkg : targetPackages) {
-            if (stats.containsKey(pkg)) {
-                sessionBaseUsage.put(pkg, stats.get(pkg).getTotalTimeInForeground());
-            } else {
-                sessionBaseUsage.put(pkg, 0L);
-            }
-        }
-    }
-
-    private long getSessionUsage() {
-        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
-        long now = System.currentTimeMillis();
-        Map<String, UsageStats> stats = usm.queryAndAggregateUsageStats(now - (now % 86400000), now);
-        
-        long currentTotal = 0;
-        for (String pkg : targetPackages) {
-            if (stats.containsKey(pkg)) {
-                long totalTime = stats.get(pkg).getTotalTimeInForeground();
-                long base = sessionBaseUsage.containsKey(pkg) ? sessionBaseUsage.get(pkg) : 0;
-                currentTotal += Math.max(0, totalTime - base);
-            }
-        }
-        return currentTotal;
     }
 
     private void checkUsageLoop() {
@@ -113,38 +89,59 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
             updateForegroundPackage();
             
             boolean isTargetActive = targetPackages.contains(currentForegroundPackage);
-            long sessionTimeUsed = getSessionUsage();
-            boolean isTimeOver = sessionTimeUsed > (userLimitMinutes * 60 * 1000L);
+            
+            // Increment local session counter only if target is in foreground
+            if (isTargetActive) {
+                if (lastForegroundCheckTime > 0) {
+                    sessionElapsedMillis += (now - lastForegroundCheckTime);
+                }
+            }
+            lastForegroundCheckTime = now;
+
+            boolean isTimeOver = sessionElapsedMillis > (userLimitMinutes * 60 * 1000L);
             boolean isLockedDate = strictUntilMillis > 0 && now < strictUntilMillis;
 
             // Logic 1: Strict Mode (Block and Alert)
             if (mode.equals("strict")) {
                 if (isTimeOver || isLockedDate) {
-                    // Only establish tunnel if the target app is actually in foreground
-                    // This "stops" the VPN effect when they leave the social app
-                    if (isTargetActive) {
-                        if (vpnInterface == null) {
-                            startBlocking();
+                    // Grace period check for first-time expiry (only if triggered by session limit)
+                    if (isTimeOver && !hasWarnedStrict && !isLockedDate) {
+                        triggerAlert("Strict Mode: Limit reached! Preparing to block data in 10 seconds.");
+                        hasWarnedStrict = true;
+                        warningStartTime = now;
+                    }
+
+                    // If grace period (10s) is over, or it's a fixed lock date, block
+                    boolean blockNow = isLockedDate || (hasWarnedStrict && now > (warningStartTime + 10000));
+
+                    if (blockNow) {
+                        if (isTargetActive) {
+                            if (vpnInterface == null) {
+                                startBlocking();
+                            }
+                        } else {
+                            stopBlocking();
+                        }
+
+                        if (!hasAlertedStrict) {
+                            triggerAlert("Focus Limit Exceeded. App restricted until session ends.");
+                            hasAlertedStrict = true;
                         }
                     } else {
                         stopBlocking();
                     }
-                    
-                    if (!hasAlertedStrict) {
-                        triggerAlert("Strict Mode: Focus Limit Exceeded. App restricted.");
-                        hasAlertedStrict = true;
-                    }
                 } else {
                     stopBlocking();
                     hasAlertedStrict = false;
+                    hasWarnedStrict = false;
                 }
             }
             
             // Logic 2: Alert Mode (Notify only)
             if (mode.equals("alert")) {
-                stopBlocking(); // Never block in Alert mode
+                stopBlocking(); // Ensure no blocking in Alert mode
                 if (isTimeOver && !hasAlertedAlert) {
-                    triggerAlert("Alert Mode: Limit Reached. Kindly close the app.");
+                    triggerAlert("Time Alert: Your limit has been reached. Please focus on other tasks.");
                     hasAlertedAlert = true;
                 } else if (!isTimeOver) {
                     hasAlertedAlert = false;
@@ -152,20 +149,24 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
             }
 
             checkUsageLoop();
-        }, 2000); // Check every 2s for better foreground detection
+        }, 2000); 
     }
 
     private void updateForegroundPackage() {
         UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
         long now = System.currentTimeMillis();
-        List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 1000 * 60, now);
-        if (stats != null) {
+        List<UsageStats> stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 5000, now);
+        if (stats != null && !stats.isEmpty()) {
             long lastTime = 0;
+            String topPkg = "";
             for (UsageStats s : stats) {
                 if (s.getLastTimeUsed() > lastTime) {
-                    currentForegroundPackage = s.getPackageName();
+                    topPkg = s.getPackageName();
                     lastTime = s.getLastTimeUsed();
                 }
+            }
+            if (!topPkg.isEmpty()) {
+                currentForegroundPackage = topPkg;
             }
         }
     }
@@ -177,7 +178,7 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
             Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             if (v != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    v.vibrate(VibrationEffect.createWaveform(new long[]{0, 500, 200, 500}, -1));
+                    v.vibrate(VibrationEffect.createWaveform(new long[]{0, 500, 200, 500, 200, 500}, -1));
                 } else {
                     v.vibrate(1000);
                 }
@@ -192,16 +193,24 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
     private void startBlocking() {
         VpnService.Builder builder = new VpnService.Builder();
         try {
+            // Use 10.0.0.2 as a local sink.
+            // DO NOT set 0.0.0.0 as route if possible, but VpnService needs a route to catch traffic.
+            // IMPORTANT: If we only add specific applications, the route should only apply to them.
             builder.setSession("FocusGuard")
                    .addAddress("10.0.0.2", 24)
-                   .addDnsServer("8.8.8.8");
+                   .addRoute("0.0.0.0", 0); // Catch traffic for identified apps
             
+            boolean added = false;
             for (String pkg : targetPackages) {
                 try {
                     builder.addAllowedApplication(pkg);
-                } catch (Exception e) {/* package might not be installed */}
+                    added = true;
+                } catch (Exception e) {}
             }
             
+            // If no apps can be blocked, don't start
+            if (!added) return;
+
             vpnInterface = builder.establish();
         } catch (Exception e) {
             e.printStackTrace();
@@ -217,6 +226,12 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
                 e.printStackTrace();
             }
         }
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override

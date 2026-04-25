@@ -399,7 +399,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'contact', child: Text("Contact Me")),
-              PopupMenuItem(value: 'pin', child: Text(_savedPin == null ? "Set Parental PIN" : "Modify PIN")),
+              PopupMenuItem(value: 'pin', child: Text(_savedPin == null ? "Modify, Change your pin or lock your shield" : "Modify Security Lock")),
             ],
           ),
         ],
@@ -624,7 +624,16 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   Widget _appTile(Map<String, String> app) {
     final selected = _selectedApps.contains(app['id']);
     return InkWell(
-      onTap: () => setState(() => selected ? _selectedApps.remove(app['id']) : _selectedApps.add(app['id']!)),
+      onTap: () {
+        setState(() {
+          if (selected) {
+            _selectedApps.remove(app['id']);
+          } else {
+            _selectedApps.clear();
+            _selectedApps.add(app['id']!);
+          }
+        });
+      },
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(8),
