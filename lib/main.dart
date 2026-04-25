@@ -210,9 +210,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
+class _DashboardScreenState extends State<DashboardScreen> {
   static const platform = MethodChannel('com.focusguard/vpn');
-  late TabController _tabController;
   int _hours = 0;
   int _minutes = 15;
   DateTime? _strictUntil;
@@ -231,44 +230,37 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadPin();
-    _tabController.addListener(() {
-      if (_tabController.indexIsChanging) {
-        if (_isActive && _savedPin != null) {
-          final targetIndex = _tabController.index;
-          // Revert UI index immediately so user doesn't see switch until auth
-          _tabController.index = _mode == 'alert' ? 0 : 1;
+  }
+
+  Future<void> _attemptModeSwitch(String newMode) async {
+    if (newMode == _mode) return;
+
+    if (_isActive && _savedPin != null) {
+      await _showPinDialog(
+        isSetting: false,
+        onAuth: (pin) async {
+          final prefs = await SharedPreferences.getInstance();
+          final actualPin = prefs.getString('security_pin');
           
-          _showPinDialog(
-            isSetting: false,
-            onAuth: (pin) async {
-              // Reload PIN from storage to be 100% sure we have the latest
-              final prefs = await SharedPreferences.getInstance();
-              final actualPin = prefs.getString('security_pin');
-              
-              if (pin == actualPin) {
-                setState(() {
-                  _savedPin = actualPin;
-                  _tabController.index = targetIndex;
-                  _mode = targetIndex == 0 ? 'alert' : 'strict';
-                  if (_mode == 'alert') _strictUntil = null;
-                });
-                // Update live service with new mode automatically
-                _startMonitoring();
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect PIN verification!")));
-              }
-            },
-          );
-        } else {
-          setState(() {
-            _mode = _tabController.index == 0 ? 'alert' : 'strict';
-            if (_mode == 'alert') _strictUntil = null;
-          });
-        }
-      }
-    });
+          if (pin == actualPin) {
+            setState(() {
+              _mode = newMode;
+              if (_mode == 'alert') _strictUntil = null;
+            });
+            // Auto-update service if it was running
+            _startMonitoring();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Access Denied: Incorrect PIN")));
+          }
+        },
+      );
+    } else {
+      setState(() {
+        _mode = newMode;
+        if (_mode == 'alert') _strictUntil = null;
+      });
+    }
   }
 
   Future<void> _loadPin() async {
@@ -479,44 +471,44 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                       children: [
                         Expanded(
                           child: GestureDetector(
-                            onTap: () => _tabController.animateTo(0),
+                            onTap: () => _attemptModeSwitch('alert'),
                             child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
+                              duration: const Duration(milliseconds: 250),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: _mode == 'alert' ? Colors.white : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: _mode == 'alert' 
-                                    ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
+                                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
                                     : [],
                               ),
                               alignment: Alignment.center,
                               child: Text("Alert Mode", 
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold, 
-                                  color: _mode == 'alert' ? Colors.orange[800] : Colors.grey
+                                  color: _mode == 'alert' ? Colors.orange[800] : Colors.grey[500]
                                 )),
                             ),
                           ),
                         ),
                         Expanded(
                           child: GestureDetector(
-                            onTap: () => _tabController.animateTo(1),
+                            onTap: () => _attemptModeSwitch('strict'),
                             child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
+                              duration: const Duration(milliseconds: 250),
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
                                 color: _mode == 'strict' ? Colors.white : Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                                 boxShadow: _mode == 'strict' 
-                                    ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]
+                                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
                                     : [],
                               ),
                               alignment: Alignment.center,
                               child: Text("Strict Mode", 
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold, 
-                                  color: _mode == 'strict' ? Colors.red[800] : Colors.grey
+                                  color: _mode == 'strict' ? Colors.red[800] : Colors.grey[500]
                                 )),
                             ),
                           ),
