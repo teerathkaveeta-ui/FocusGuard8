@@ -16,6 +16,7 @@ import android.os.VibrationEffect;
 import android.os.Build;
 import android.speech.tts.TextToSpeech;
 import android.widget.Toast;
+import android.content.pm.ServiceInfo;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -98,7 +99,9 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, createNotification("Monitoring usage for selected apps..."), ServiceInfo.FOREGROUND_SERVICE_TYPE_VPN);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForeground(1, createNotification("Monitoring usage for selected apps..."));
         }
         if (intent != null) {

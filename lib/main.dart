@@ -572,6 +572,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildConfigPage(String title, String desc, bool isStrict) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _timeSelector("HOURS", _hours, (v) => setState(() => _hours = v), 23),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(12, 16, 12, 0),
+                child: Text(":", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.grey)),
+              ),
+              _timeSelector("MINUTES", _minutes, (v) => setState(() => _minutes = v), 59),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Color(0xFF1E293B))),
+          const SizedBox(height: 8),
+          Text(
+            desc,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          const Text("Target Application (Select One)", 
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blue)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: apps.map((app) => SizedBox(width: 135, child: _appTile(app))).toList(),
+          ),
+          if (isStrict) ...[
+            const SizedBox(height: 24),
+            InkWell(
+              onTap: _pickDateTime,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.red[100]!),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.timer_off_outlined, color: Colors.red),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Terminal Lock Date (Optional)", 
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red)),
+                          Text(
+                            _strictUntil == null 
+                              ? "No hard lock set" 
+                              : "Locked until: ${_strictUntil.toString().split('.')[0]}",
+                            style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.calendar_month, color: Colors.red, size: 20),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildSecuritySection() {
     return Container(
       padding: const EdgeInsets.all(20),
