@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.focusguard.app">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_VPN" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -31,8 +31,9 @@
         <service
             android:name=".FocusVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:foregroundServiceType="vpn"
+            android:foregroundServiceType="specialUse"
             android:exported="false">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_TYPE" android:value="This app manages network traffic locally to help users focus on tasks by alerting or blocking distracting social media apps based on user-set limits." />
             <intent-filter>
                 <action android:name="android.net.VpnService" />
             </intent-filter>
