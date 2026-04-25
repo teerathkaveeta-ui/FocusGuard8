@@ -413,73 +413,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 10),
-            const Text("FocusGuard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          ],
-        ),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (val) {
-              if (val == 'contact') {
-                platform.invokeMethod('contactDeveloper');
-              } else if (val == 'pin') {
-                _showPinDialog(isSetting: true);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'contact', child: Text("Contact Me")),
-              PopupMenuItem(value: 'pin', child: Text(_savedPin == null ? "Modify, Change your pin or lock your shield" : "Modify Security Lock")),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8F9FA),
+        appBar: AppBar(
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text("FocusGuard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
             ],
           ),
-        ],
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildShieldHealth(),
-            const SizedBox(height: 16),
-            // Mode Selection Units - Mutually Exclusive
-            Row(
-              children: [
-                Expanded(
-                  child: _modeUnit(
-                    "ALERT MODE", 
-                    "Focus Alerts", 
-                    Icons.notifications_active_outlined, 
-                    _mode == 'alert', 
-                    Colors.orange,
-                    () => _attemptModeChange('alert')
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _modeUnit(
-                    "STRICT MODE", 
-                    "Network Shield", 
-                    Icons.lock_person_outlined, 
-                    _mode == 'strict', 
-                    Colors.red,
-                    () => _attemptModeChange('strict')
-                  ),
-                ),
+          bottom: TabBar(
+            onTap: (index) {
+              final newMode = index == 0 ? 'alert' : 'strict';
+              if (_isActive && newMode != _mode) {
+                // If active, prevent switching tab visually by forcing it back or showing warning
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Shield Active: Terminate current shield to switch modes."))
+                );
+              } else if (newMode != _mode) {
+                _attemptModeChange(newMode);
+              }
+            },
+            tabs: const [
+              Tab(text: "ALERT MODE", icon: Icon(Icons.notifications_active_outlined)),
+              Tab(text: "STRICT MODE", icon: Icon(Icons.lock_person_outlined)),
+            ],
+          ),
+          actions: [
+            PopupMenuButton<String>(
+              onSelected: (val) {
+                if (val == 'contact') {
+                  platform.invokeMethod('contactDeveloper');
+                } else if (val == 'pin') {
+                  _showPinDialog(isSetting: true);
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(value: 'contact', child: Text("Contact Me")),
+                PopupMenuItem(value: 'pin', child: Text(_savedPin == null ? "Set Security Lock PIN" : "Modify Security Lock")),
               ],
             ),
-            const SizedBox(height: 20),
-            // Configuration Panel for Active Mode
+          ],
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+        ),
+        body: TabBarView(
+          physics: _isActive ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+          children: [
+            _buildModeView('alert'),
+            _buildModeView('strict'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeView(String modeName) {
+    bool isCurrentTabActiveMode = _isActive && _mode == modeName;
+    bool isOtherTabActive = _isActive && _mode != modeName;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildShieldHealth(modeName),
+          const SizedBox(height: 16),
+          if (isOtherTabActive)
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.red[100]!),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.red),
+                  SizedBox(width: 12),
+                  Expanded(child: Text("Another Shield mode is currently active. Stop it first to use this mode.", 
+                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13))),
+                ],
+              ),
+            )
+          else
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -493,24 +517,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        Icon(Icons.tune, size: 18, color: Colors.grey[600]),
-                        const SizedBox(width: 8),
-                        Text(
-                          "${_mode.toUpperCase()} CONFIGURATION", 
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey[600], letterSpacing: 1)
-                        ),
-                      ],
+                    child: Text(
+                      "${modeName.toUpperCase()} CONFIGURATION", 
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey[600], letterSpacing: 1)
                     ),
                   ),
                   const Divider(height: 1),
                   _buildConfigPage(
-                    _mode == 'alert' ? "Focus Alerts" : "Strict Shield",
-                    _mode == 'alert' 
+                    modeName == 'alert' ? "Focus Alerts" : "Strict Shield",
+                    modeName == 'alert' 
                       ? "Alerts you with sound/vibration when target apps are opened. No blocking."
                       : "Completely blocks internet access for target apps once time limit is reached.",
-                    _mode == 'strict'
+                    modeName == 'strict'
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -522,19 +540,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: ElevatedButton(
                             onPressed: _isActive ? null : _startMonitoring,
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: _mode == 'alert' ? const Color(0xFF2563EB) : Colors.black,
+                              backgroundColor: modeName == 'alert' ? const Color(0xFF2563EB) : Colors.black,
                               foregroundColor: Colors.white,
-                              disabledBackgroundColor: Colors.green[50],
-                              disabledForegroundColor: Colors.green[700],
+                              disabledBackgroundColor: isCurrentTabActiveMode ? Colors.green[50] : Colors.grey[100],
+                              disabledForegroundColor: isCurrentTabActiveMode ? Colors.green[700] : Colors.grey[400],
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                               elevation: 0,
                             ),
-                            child: _isActive
+                            child: isCurrentTabActiveMode
                                 ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.verified_user), SizedBox(width: 8), Text("Shield Active", style: TextStyle(fontWeight: FontWeight.bold))])
-                                : Text("ACTIVATE ${_mode.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                : Text("ACTIVATE ${modeName.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           ),
                         ),
-                        if (_isActive) ...[
+                        if (isCurrentTabActiveMode) ...[
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
@@ -555,35 +573,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
-            _buildSecuritySection(),
-            const SizedBox(height: 32),
-          ],
-        ),
+          const SizedBox(height: 24),
+          _buildSecuritySection(),
+          const SizedBox(height: 32),
+        ],
       ),
     );
   }
 
-  Widget _modeUnit(String title, String subtitle, IconData icon, bool isSelected, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
-        decoration: BoxDecoration(
-          color: isSelected ? color[isSelected ? 50 : 0] : Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: isSelected ? color[200]! : Colors.grey[200]!, width: 2),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: isSelected ? color[800] : Colors.grey[400], size: 28),
-            const SizedBox(height: 12),
-            Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: isSelected ? color[800] : Colors.grey[400], letterSpacing: 0.5)),
-            const SizedBox(height: 4),
-            Text(subtitle, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: isSelected ? color[900] : Colors.grey[600])),
-          ],
-        ),
+  Widget _buildShieldHealth(String modeName) {
+    bool isThisModeActive = _isActive && _mode == modeName;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isThisModeActive ? Colors.green[50] : Colors.blue[50],
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isThisModeActive ? Colors.green[100]! : Colors.blue[100]!),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+            child: Icon(isThisModeActive ? Icons.verified_user : Icons.shield_outlined, color: isThisModeActive ? Colors.green : Colors.blue, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(isThisModeActive ? "Shield is Standing Guard" : "Shield Standby", 
+                     style: TextStyle(fontWeight: FontWeight.bold, color: isThisModeActive ? Colors.green[900] : Colors.blue[900], fontSize: 15)),
+                Text(isThisModeActive ? "Monitoring selected apps for usage." : "Configure and tap Start.", 
+                     style: TextStyle(fontSize: 11, color: isThisModeActive ? Colors.green[700] : Colors.blue[700])),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -722,37 +748,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildShieldHealth() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.blue[100]!),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-            child: Icon(_isActive ? Icons.verified_user : Icons.shield_outlined, color: Colors.blue, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_isActive ? "Shield is Standing Guard" : "Shield is in Standby", 
-                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue[900], fontSize: 15)),
-                Text(_isActive ? "Monitoring selected apps for usage." : "Configure your limit and tap Start.", 
-                     style: TextStyle(fontSize: 11, color: Colors.blue[700])),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
   Widget _timeSelector(String label, int value, Function(int) onChanged, int max) {
     return Column(
       children: [
@@ -800,12 +795,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Container(
               width: 32,
               height: 32,
-              decoration: BoxDecoration(color: selected ? Colors.blue : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(color: selected ? Colors.blue : Colors.blue[50], borderRadius: BorderRadius.circular(8)),
               alignment: Alignment.center,
-              child: Text(app['icon']!, style: TextStyle(color: selected ? Colors.white : Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+              child: Text(app['icon']!, style: TextStyle(color: selected ? Colors.white : Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
             ),
             const SizedBox(width: 8),
-            Expanded(child: Text(app['name']!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+            Expanded(child: Text(app['name']!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
+            if (selected) const Icon(Icons.check_circle, color: Colors.blue, size: 16),
           ],
         ),
       ),
