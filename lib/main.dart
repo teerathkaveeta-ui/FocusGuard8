@@ -237,20 +237,27 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       if (_tabController.indexIsChanging) {
         if (_isActive && _savedPin != null) {
           final targetIndex = _tabController.index;
-          // Revert for UI consistency while dialog is showing
+          // Revert UI index immediately so user doesn't see switch until auth
           _tabController.index = _mode == 'alert' ? 0 : 1;
           
           _showPinDialog(
             isSetting: false,
-            onAuth: (pin) {
-              if (pin == _savedPin) {
+            onAuth: (pin) async {
+              // Reload PIN from storage to be 100% sure we have the latest
+              final prefs = await SharedPreferences.getInstance();
+              final actualPin = prefs.getString('security_pin');
+              
+              if (pin == actualPin) {
                 setState(() {
+                  _savedPin = actualPin;
                   _tabController.index = targetIndex;
                   _mode = targetIndex == 0 ? 'alert' : 'strict';
                   if (_mode == 'alert') _strictUntil = null;
                 });
+                // Update live service with new mode automatically
+                _startMonitoring();
               } else {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect Security PIN!")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect PIN verification!")));
               }
             },
           );
@@ -518,12 +525,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                     ),
                   ),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _mode == 'alert' 
-                        ? KeyedSubtree(key: const ValueKey('alert'), child: _buildConfigPage("Alerting", "Warns you with sound and vibrations. No blocking.", false))
-                        : KeyedSubtree(key: const ValueKey('strict'), child: _buildConfigPage("Lockdown", "Blocks data for selected apps. Includes grace period.", true)),
-                  ),
+                  _mode == 'alert' 
+                      ? _buildConfigPage("Focus Alerts Enabled", "Warns you with sound and vibrations. No app blocking occurs in this mode.", false)
+                      : _buildConfigPage("Strict Shield Enabled", "Active network blocking for selected apps after limit ends. Prevents distraction.", true),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                     child: Column(
@@ -598,10 +602,11 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           ),
           const SizedBox(height: 12),
           Text(
-            "FocusGuard uses a local VPN to monitor targeted social media app data locally on your device. \n\n"
-            "🛡️ NO data is uploaded or shared.\n"
-            "🛡️ Antivirus warnings/viruses flags are FALSE POSITIVES caused by the network management features required to block apps.\n"
-            "🛡️ You can verify this by checking that your internet works normally for other apps.",
+            "Security & Safe Usage Details:\n\n"
+            "🛡️ FocusGuard operates 100% locally on your phone. No internet data is tracked or shared.\n\n"
+            "⚠️ ATTENTION: Because FocusGuard uses a local VPN to managed network traffic, some generic antiviruses may flag it as 'suspicious' or a 'virus'. This is a FALSE POSITIVE.\n\n"
+            "🛡️ This app contains NO viral code. It only blocks social media apps to help you focus.\n\n"
+            "🛡️ You can verify your internet remains safe for all other applications.",
             style: TextStyle(fontSize: 11, color: Colors.grey[700], height: 1.6),
           ),
           const SizedBox(height: 16),

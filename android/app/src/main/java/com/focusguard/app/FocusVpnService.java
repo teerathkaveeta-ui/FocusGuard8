@@ -239,6 +239,11 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
         handler.post(() -> {
             Toast.makeText(FocusVpnService.this, message, Toast.LENGTH_LONG).show();
             
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify(2, createNotification(message));
+            }
+
             Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             if (v != null) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
