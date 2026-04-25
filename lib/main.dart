@@ -212,7 +212,9 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProviderStateMixin {
   static const platform = MethodChannel('com.focusguard/vpn');
   late TabController _tabController;
-  int _minutesLimit = 15;
+  int _hours = 0;
+  int _minutes = 15;
+  DateTime? _strictUntil;
   String _mode = 'alert';
   final Set<String> _selectedApps = {};
   bool _isActive = false;
@@ -235,9 +237,35 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     });
   }
 
+  Future<void> _pickDateTime() async {
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 7)),
+    );
+    if (date == null) return;
+    
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (time == null) return;
+
+    setState(() {
+      _strictUntil = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    });
+  }
+
   Future<void> _startMonitoring() async {
     if (_selectedApps.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select at least one app")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Select target apps")));
+      return;
+    }
+
+    final totalMinutes = (_hours * 60) + _minutes;
+    if (totalMinutes == 0 && _strictUntil == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Set a limit or lock date")));
       return;
     }
 
@@ -248,13 +276,14 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           .toList();
 
       await platform.invokeMethod('startVpnWithLimit', {
-        "limit": _minutesLimit,
+        "limit": totalMinutes,
         "packages": selectedPackages,
         "mode": _mode,
+        "strictUntil": _strictUntil?.millisecondsSinceEpoch,
       });
 
       setState(() => _isActive = true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("FocusGuard Activated! ⚔️")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("FocusGuard Shield ON 🛡️")));
     } on PlatformException catch (e) {
       debugPrint("Error: ${e.message}");
     }
@@ -270,178 +299,190 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(color: const Color(0xFF2563EB), borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.smartphone, color: Colors.white, size: 20),
+              child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
-            const Text("FocusGuard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+            const Text("FocusGuard Pro", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           ],
         ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.green[100],
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.wifi, size: 14, color: Colors.green),
-                SizedBox(width: 4),
-                Text("INTERNET ON", style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          )
-        ],
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: Colors.grey[200], height: 1),
-        ),
       ),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFF1F5F9)),
-                ),
-                child: Column(
-                  children: [
-                    TabBar(
-                      controller: _tabController,
-                      indicatorSize: TabBarIndicatorSize.tab,
-                      dividerColor: Colors.transparent,
-                      indicator: UnderlineTabIndicator(
-                        borderSide: BorderSide(
-                          width: 3.0,
-                          color: _mode == 'alert' ? Colors.orange : Colors.red,
-                        ),
-                        insets: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: const Color(0xFFF1F5F9)),
+              ),
+              child: Column(
+                children: [
+                  TabBar(
+                    controller: _tabController,
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    indicator: UnderlineTabIndicator(
+                      borderSide: BorderSide(
+                        width: 3.0,
+                        color: _mode == 'alert' ? Colors.orange : Colors.red,
                       ),
-                      labelColor: _mode == 'alert' ? Colors.orange[800] : Colors.red[800],
-                      unselectedLabelColor: Colors.grey,
-                      labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      tabs: const [
-                        Tab(text: "Alert Mode", icon: Icon(Icons.warning_amber_rounded)),
-                        Tab(text: "Strict Mode", icon: Icon(Icons.security_rounded)),
-                      ],
+                      insets: const EdgeInsets.symmetric(horizontal: 20),
                     ),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.access_time, size: 16, color: Colors.grey[400]),
-                              const SizedBox(width: 8),
-                              const Text("TIME LIMIT", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Row(
-                            children: [1, 15, 60].map((t) {
-                              final active = _minutesLimit == t;
-                              return Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  child: OutlinedButton(
-                                    onPressed: () => setState(() => _minutesLimit = t),
-                                    style: OutlinedButton.styleFrom(
-                                      backgroundColor: active ? const Color(0xFFEFF6FF) : Colors.transparent,
-                                      side: BorderSide(color: active ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0)),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    ),
-                                    child: Text(t >= 60 ? "1 hr" : "$t min", style: TextStyle(color: active ? const Color(0xFF1D4ED8) : Colors.grey[700], fontSize: 12)),
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
+                    labelColor: _mode == 'alert' ? Colors.orange[800] : Colors.red[800],
+                    unselectedLabelColor: Colors.grey,
+                    tabs: const [
+                      Tab(text: "Alert Mode", icon: Icon(Icons.notifications_active_outlined)),
+                      Tab(text: "Strict Mode", icon: Icon(Icons.gpp_maybe_outlined)),
+                    ],
+                  ),
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text("CUSTOM TIME LIMIT", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _timeSelector("HR", _hours, (v) => setState(() => _hours = v), 23),
+                            const Text(" : ", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                            _timeSelector("MIN", _minutes, (v) => setState(() => _minutes = v), 59),
+                          ],
+                        ),
+                        if (_mode == 'strict') ...[
                           const SizedBox(height: 24),
-                          const Text("TARGET APPS", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                          const Text("LOCK UNTIL (FIXED DATE)", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                           const SizedBox(height: 12),
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.8),
-                            itemCount: apps.length,
-                            itemBuilder: (context, index) {
-                              final app = apps[index];
-                              final selected = _selectedApps.contains(app['id']);
-                              return InkWell(
-                                onTap: () => setState(() {
-                                  if (selected) {
-                                    _selectedApps.remove(app['id']);
-                                  } else {
-                                    _selectedApps.add(app['id']!);
-                                  }
-                                }),
-                                child: Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: selected ? const Color(0xFFEFF6FF) : Colors.white,
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(color: selected ? const Color(0xFF3B82F6) : const Color(0xFFF1F5F9)),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 32,
-                                        height: 32,
-                                        decoration: BoxDecoration(color: selected ? Colors.blue[600] : Colors.grey[100], borderRadius: BorderRadius.circular(8)),
-                                        alignment: Alignment.center,
-                                        child: Text(app['icon']!, style: TextStyle(color: selected ? Colors.white : Colors.grey[600], fontSize: 10, fontWeight: FontWeight.bold)),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(app['name']!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500))),
-                                      if (selected) const Icon(Icons.check_circle, color: Colors.blue, size: 16),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 32),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 60,
-                            child: ElevatedButton(
-                              onPressed: _isActive ? null : _startMonitoring,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF2563EB),
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor: Colors.green[100],
-                                disabledForegroundColor: Colors.green[700],
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                elevation: 0,
+                          InkWell(
+                            onTap: _pickDateTime,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
                               ),
-                              child: _isActive
-                                  ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check), SizedBox(width: 8), Text("Session Active", style: TextStyle(fontWeight: FontWeight.bold))])
-                                  : const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.play_arrow), SizedBox(width: 8), Text("Start Limit", style: TextStyle(fontWeight: FontWeight.bold))]),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 16, color: Colors.blue),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _strictUntil == null 
+                                          ? "Select Expiry Date & Time" 
+                                          : "Lock until: ${_strictUntil!.day}/${_strictUntil!.month} ${_strictUntil!.hour}:${_strictUntil!.minute}",
+                                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                                    ),
+                                  ),
+                                  if (_strictUntil != null) IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => setState(() => _strictUntil = null)),
+                                ],
+                              ),
                             ),
                           ),
                         ],
-                      ),
-                    )
-                  ],
-                ),
+                        const SizedBox(height: 32),
+                        const Text("SHIELD APPLICATIONS", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                        const SizedBox(height: 12),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 2.5),
+                          itemCount: apps.length,
+                          itemBuilder: (context, index) => _appTile(apps[index]),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 64,
+                          child: ElevatedButton(
+                            onPressed: _isActive ? null : _startMonitoring,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _mode == 'alert' ? const Color(0xFF2563EB) : Colors.black,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: Colors.green[100],
+                              disabledForegroundColor: Colors.green[700],
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                              elevation: 0,
+                            ),
+                            child: _isActive
+                                ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle_rounded), SizedBox(width: 8), Text("Active", style: TextStyle(fontWeight: FontWeight.bold))])
+                                : Text(_mode == 'alert' ? "ENABLE ALERTS" : "ACTIVATE STRICT LOCK", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                ],
               ),
-              const SizedBox(height: 32),
-              const Center(child: Text("FocusGuard Protocol v1.0.2", style: TextStyle(color: Colors.grey, fontSize: 11))),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              _mode == 'alert' 
+                ? "Alert Mode: Plays voice notification & vibrates when limit ends."
+                : "Strict Mode: Blocks network for selected apps after 3s of usage.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            )
+          ],
         ),
       ),
     );
   }
+
+  Widget _timeSelector(String label, int value, Function(int) onChanged, int max) {
+    return Column(
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Container(
+          width: 80,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: [
+              IconButton(icon: const Icon(Icons.keyboard_arrow_up), onPressed: () => onChanged(value < max ? value + 1 : 0)),
+              Text(value.toString().padLeft(2, '0'), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+              IconButton(icon: const Icon(Icons.keyboard_arrow_down), onPressed: () => onChanged(value > 0 ? value - 1 : max)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _appTile(Map<String, String> app) {
+    final selected = _selectedApps.contains(app['id']);
+    return InkWell(
+      onTap: () => setState(() => selected ? _selectedApps.remove(app['id']) : _selectedApps.add(app['id']!)),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFEFF6FF) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: selected ? Colors.blue : const Color(0xFFF1F5F9), width: 1.5),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(color: selected ? Colors.blue : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+              alignment: Alignment.center,
+              child: Text(app['icon']!, style: TextStyle(color: selected ? Colors.white : Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(app['name']!, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+          ],
+        ),
+      ),
+    );
+  }
+}
 }
