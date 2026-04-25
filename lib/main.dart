@@ -216,6 +216,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   int _minutes = 15;
   DateTime? _strictUntil;
   String _mode = 'alert';
+  String? _savedPin;
   final Set<String> _selectedApps = {};
   bool _isActive = false;
 
@@ -239,6 +240,70 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
         });
       }
     });
+  }
+
+  Future<void> _showPinDialog({required bool isSetting, Function(String)? onAuth}) async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(isSetting ? "Set Security PIN" : "Enter PIN to Unlock"),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          decoration: const InputDecoration(hintText: "4 Digit PIN"),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.length == 4) {
+                if (isSetting) {
+                  setState(() => _savedPin = controller.text);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PIN Saved Successfully")));
+                } else if (onAuth != null) {
+                  onAuth(controller.text);
+                }
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Confirm"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _stopMonitoring() async {
+    if (_savedPin != null) {
+      await _showPinDialog(
+        isSetting: false,
+        onAuth: (pin) async {
+          if (pin == _savedPin) {
+            await _performStop();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect PIN!")));
+          }
+        },
+      );
+    } else {
+      await _performStop();
+    }
+  }
+
+  Future<void> _performStop() async {
+    try {
+      await platform.invokeMethod('stopVpn');
+      setState(() => _isActive = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("FocusGuard Deactivated")));
+    } catch (e) {
+      debugPrint("Stop Error: $e");
+    }
   }
 
   Future<void> _pickDateTime() async {
@@ -417,10 +482,25 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                               elevation: 0,
                             ),
                             child: _isActive
-                                ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle_rounded), SizedBox(width: 8), Text("Active", style: TextStyle(fontWeight: FontWeight.bold))])
+                                ? const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.check_circle_rounded), SizedBox(width: 8), Text("Shield Active", style: TextStyle(fontWeight: FontWeight.bold))])
                                 : Text(_mode == 'alert' ? "ENABLE ALERTS" : "ACTIVATE STRICT LOCK", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           ),
                         ),
+                        if (_isActive) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              onPressed: _stopMonitoring,
+                              icon: const Icon(Icons.stop_circle_outlined, color: Colors.red),
+                              label: const Text("STOP SHIELD", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Colors.red)),
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   )
@@ -428,10 +508,25 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               ),
             ),
             const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  onPressed: () => _showPinDialog(isSetting: true),
+                  icon: const Icon(Icons.lock_outline, color: Colors.blueGrey, size: 20),
+                  tooltip: "Set Parental PIN",
+                ),
+                Text(
+                  _savedPin != null ? "PIN Lock Enabled" : "No PIN Protection",
+                  style: const TextStyle(color: Colors.blueGrey, fontSize: 11),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
             Text(
               _mode == 'alert' 
                 ? "Alert Mode: Plays voice notification & vibrates when limit ends."
-                : "Strict Mode: Blocks network for selected apps after 3s of usage.",
+                : "Strict Mode: Blocks network for selected apps after limit/date.",
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.grey, fontSize: 12),
             )
