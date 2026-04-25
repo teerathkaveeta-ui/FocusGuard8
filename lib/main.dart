@@ -9,7 +9,7 @@ class FocusGuardApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'FocusGuard Pro',
+      title: 'FocusGuard',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: 'Roboto',
@@ -302,7 +302,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
-            const Text("FocusGuard Pro", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+            const Text("FocusGuard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
           ],
         ),
         backgroundColor: Colors.white,
