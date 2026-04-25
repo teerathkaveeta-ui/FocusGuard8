@@ -234,22 +234,28 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         if (_isActive && _savedPin != null) {
+          // Temporarily revert the index change until authorized
+          final targetIndex = _tabController.index;
+          _tabController.index = _mode == 'alert' ? 0 : 1;
+          
           _showPinDialog(
             isSetting: false,
             onAuth: (pin) {
               if (pin == _savedPin) {
                 setState(() {
-                  _mode = _tabController.index == 0 ? 'alert' : 'strict';
+                  _tabController.index = targetIndex;
+                  _mode = targetIndex == 0 ? 'alert' : 'strict';
+                  if (_mode == 'alert') _strictUntil = null;
                 });
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Incorrect PIN!")));
-                _tabController.index = _mode == 'alert' ? 0 : 1;
               }
             },
           );
         } else {
           setState(() {
             _mode = _tabController.index == 0 ? 'alert' : 'strict';
+            if (_mode == 'alert') _strictUntil = null;
           });
         }
       }

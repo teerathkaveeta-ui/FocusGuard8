@@ -20,6 +20,7 @@ import java.util.Locale;
 public class FocusVpnService extends VpnService implements TextToSpeech.OnInitListener {
     private ParcelFileDescriptor vpnInterface = null;
     private final Handler handler = new Handler();
+    private Runnable usageLoopRunnable = null;
     private int userLimitMinutes = 30;
     private long strictUntilMillis = 0;
     private List<String> targetPackages = Arrays.asList(
@@ -79,77 +80,89 @@ public class FocusVpnService extends VpnService implements TextToSpeech.OnInitLi
         sessionElapsedMillis = 0;
         lastForegroundCheckTime = System.currentTimeMillis();
         
-        checkUsageLoop();
+        // Ensure no old loop is running
+        if (usageLoopRunnable != null) {
+            handler.removeCallbacks(usageLoopRunnable);
+        }
+
+        // If starting in Alert mode, force unblock immediately
+        if ("alert".equals(mode)) {
+            stopBlocking();
+        }
+
+        startUsageLoop();
         return START_STICKY;
     }
 
-    private void checkUsageLoop() {
-        handler.postDelayed(() -> {
-            long now = System.currentTimeMillis();
-            updateForegroundPackage();
-            
-            boolean isTargetActive = targetPackages.contains(currentForegroundPackage);
-            
-            // Increment local session counter only if target is in foreground
-            if (isTargetActive) {
-                if (lastForegroundCheckTime > 0) {
-                    sessionElapsedMillis += (now - lastForegroundCheckTime);
-                }
-            }
-            lastForegroundCheckTime = now;
-
-            boolean isTimeOver = sessionElapsedMillis > (userLimitMinutes * 60 * 1000L);
-            boolean isLockedDate = strictUntilMillis > 0 && now < strictUntilMillis;
-
-            // Logic 1: Strict Mode (Block and Alert)
-            if (mode.equals("strict")) {
-                if (isTimeOver || isLockedDate) {
-                    // Grace period check for first-time expiry (only if triggered by session limit)
-                    if (isTimeOver && !hasWarnedStrict && !isLockedDate) {
-                        triggerAlert("Strict Mode: Limit reached! Preparing to block data in 10 seconds.");
-                        hasWarnedStrict = true;
-                        warningStartTime = now;
+    private void startUsageLoop() {
+        usageLoopRunnable = new Runnable() {
+            @Override
+            public void run() {
+                long now = System.currentTimeMillis();
+                updateForegroundPackage();
+                
+                boolean isTargetActive = targetPackages != null && targetPackages.contains(currentForegroundPackage);
+                
+                // Only count time if it's a target social app, NOT our own app
+                if (isTargetActive && !getPackageName().equals(currentForegroundPackage)) {
+                    if (lastForegroundCheckTime > 0) {
+                        sessionElapsedMillis += (now - lastForegroundCheckTime);
                     }
+                }
+                lastForegroundCheckTime = now;
 
-                    // If grace period (10s) is over, or it's a fixed lock date, block
-                    boolean blockNow = isLockedDate || (hasWarnedStrict && now > (warningStartTime + 10000));
+                boolean isTimeOver = sessionElapsedMillis > (userLimitMinutes * 60 * 1000L);
+                boolean isLockedDate = strictUntilMillis > 0 && now < strictUntilMillis;
 
-                    if (blockNow) {
-                        if (isTargetActive) {
-                            if (vpnInterface == null) {
-                                startBlocking();
-                            }
-                        } else {
-                            stopBlocking();
+                // Logic 1: Strict Mode (Block and Alert)
+                if ("strict".equals(mode)) {
+                    if (isTimeOver || isLockedDate) {
+                        // Grace period check for the first time session limit is hit
+                        if (isTimeOver && !hasWarnedStrict && !isLockedDate) {
+                            triggerAlert("Strict Mode: Limit reached! Preparing to block in 10 seconds.");
+                            hasWarnedStrict = true;
+                            warningStartTime = now;
                         }
 
-                        if (!hasAlertedStrict) {
-                            triggerAlert("Focus Limit Exceeded. App restricted until session ends.");
-                            hasAlertedStrict = true;
+                        // Block if grace period is over or if it's a hard date lock
+                        boolean shouldBlock = isLockedDate || (hasWarnedStrict && now > (warningStartTime + 10000));
+
+                        if (shouldBlock) {
+                            if (isTargetActive) {
+                                if (vpnInterface == null) {
+                                    startBlocking();
+                                }
+                            } else {
+                                stopBlocking();
+                            }
+
+                            if (!hasAlertedStrict) {
+                                triggerAlert("FocusGuard: Usage limit exceeded. Target application restricted.");
+                                hasAlertedStrict = true;
+                            }
                         }
                     } else {
                         stopBlocking();
+                        hasAlertedStrict = false;
+                        hasWarnedStrict = false;
                     }
-                } else {
-                    stopBlocking();
-                    hasAlertedStrict = false;
-                    hasWarnedStrict = false;
                 }
-            }
-            
-            // Logic 2: Alert Mode (Notify only)
-            if (mode.equals("alert")) {
-                stopBlocking(); // Ensure no blocking in Alert mode
-                if (isTimeOver && !hasAlertedAlert) {
-                    triggerAlert("Time Alert: Your limit has been reached. Please focus on other tasks.");
-                    hasAlertedAlert = true;
-                } else if (!isTimeOver) {
-                    hasAlertedAlert = false;
+                
+                // Logic 2: Alert Mode (Notify only, NEVER block)
+                if ("alert".equals(mode)) {
+                    stopBlocking(); 
+                    if (isTimeOver && !hasAlertedAlert) {
+                        triggerAlert("Alert: You've reached your usage limit. FocusGuard suggests taking a break.");
+                        hasAlertedAlert = true;
+                    } else if (!isTimeOver) {
+                        hasAlertedAlert = false;
+                    }
                 }
-            }
 
-            checkUsageLoop();
-        }, 2000); 
+                handler.postDelayed(this, 1500); 
+            }
+        };
+        handler.post(usageLoopRunnable);
     }
 
     private void updateForegroundPackage() {
